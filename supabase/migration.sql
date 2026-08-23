@@ -42,3 +42,21 @@ create table public.digest_log (
 alter table public.subscribers enable row level security;
 alter table public.daily_signals enable row level security;
 alter table public.digest_log enable row level security;
+
+-- v2: forward-return outcome tracking
+create table if not exists public.signal_outcomes (
+  id uuid primary key default gen_random_uuid(),
+  signal_date date not null,
+  issuer_cik text not null,
+  ticker text,
+  base_price numeric(12,4),
+  ret_7d numeric(8,3),
+  ret_30d numeric(8,3),
+  ret_90d numeric(8,3),
+  updated_at timestamptz not null default now(),
+  unique (signal_date, issuer_cik)
+);
+
+create index if not exists signal_outcomes_date_idx on public.signal_outcomes (signal_date);
+
+alter table public.signal_outcomes enable row level security;

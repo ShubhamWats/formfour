@@ -20,6 +20,7 @@ export default function Home() {
         <nav className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
           <span className="text-lg font-extrabold tracking-[0.2em]">FORMFOUR</span>
           <div className="flex items-center gap-6 text-sm text-zinc-400">
+            <Link href="/signals" className="hover:text-white">Live signals</Link>
             <Link href="/how-it-works" className="hover:text-white">How it works</Link>
             <Link
               href="#signup"
@@ -81,6 +82,11 @@ export default function Home() {
             <p className="mt-4 text-center text-[11px] leading-relaxed text-zinc-600">
               Public SEC data, scored by FormFour. Not investment advice.
             </p>
+            <div className="mt-3 text-center">
+              <Link href="/signals" className="text-xs font-semibold text-emerald-400 hover:text-emerald-300">
+                View live signals — no signup →
+              </Link>
+            </div>
           </div>
         </section>
 

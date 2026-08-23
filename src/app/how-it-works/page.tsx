@@ -62,7 +62,7 @@ const FAQ = [
   ],
   [
     "Why does insider buying matter?",
-    "Executives have the closest view of their company's prospects. Academic research has long found unusual open-market buying — especially clustered buying — to be one of the stronger documented signals.",
+    "Honestly: on its own, it's a weak edge — studies show mixed results when you buy any stock an insider touched. What's more interesting is clustered buying (multiple insiders at once), large open-market purchases, and buys near 52-week lows. We surface those specific patterns and publish our own forward-return track record publicly, so you can judge the data instead of our marketing.",
   ],
 ];
 

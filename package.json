@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "review": "tsx scripts/review.ts"
+    "review": "tsx scripts/review.ts",
+    "track": "tsx scripts/track.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
