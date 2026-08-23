@@ -1,0 +1,39 @@
+name: historical-replay
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many calendar days back to replay"
+        default: "60"
+        required: false
+
+concurrency:
+  group: ingest
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Replay EDGAR filings into Supabase
+        env:
+          EDGAR_USER_AGENT: ${{ secrets.EDGAR_USER_AGENT }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/replay.ts --days ${{ github.event.inputs.days || 60 }} --min-store 40
+
+      - name: Track forward returns
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/track.ts

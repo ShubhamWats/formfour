@@ -96,6 +96,19 @@ export async function fetchMasterForOffsetDay(
   }
 }
 
+export async function fetchMasterByDate(
+  dateIso: string,
+): Promise<DailyIndex | null> {
+  const d = new Date(`${dateIso}T00:00:00Z`);
+  try {
+    const raw = await secFetchRetry(masterIndexPath(d));
+    return { date: dateIso, refs: parseMaster(raw, dateIso) };
+  } catch (err) {
+    if (/SEC (404|403)/.test(String(err))) return null;
+    throw err;
+  }
+}
+
 export async function fetchRecentMasterIndexes(
   tradingDaysWanted: number,
 ): Promise<DailyIndex[]> {

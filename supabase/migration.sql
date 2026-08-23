@@ -60,3 +60,28 @@ create table if not exists public.signal_outcomes (
 create index if not exists signal_outcomes_date_idx on public.signal_outcomes (signal_date);
 
 alter table public.signal_outcomes enable row level security;
+
+-- v3: insider-level buy ledger (powers report cards & leaderboards)
+create table if not exists public.insider_buys (
+  id uuid primary key default gen_random_uuid(),
+  signal_date date not null,
+  traded_at date,
+  issuer_cik text not null,
+  ticker text,
+  owner_name text not null,
+  owner_cik text,
+  role text,
+  shares numeric(16,2),
+  price numeric(12,4),
+  value_usd numeric(16,2),
+  owned_after numeric(18,2),
+  base_price numeric(12,4),
+  created_at timestamptz not null default now(),
+  unique (signal_date, issuer_cik, owner_name, traded_at)
+);
+
+create index if not exists insider_buys_owner_idx on public.insider_buys (lower(owner_name));
+create index if not exists insider_buys_ticker_idx on public.insider_buys (ticker);
+create index if not exists insider_buys_date_idx on public.insider_buys (signal_date);
+
+alter table public.insider_buys enable row level security;

@@ -2,18 +2,28 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   fetchAndParseFiling,
+  fetchMasterByDate,
   fetchRecentMasterIndexes,
   tickerForCik,
+  type DailyIndex,
 } from "../src/lib/edgar";
-import { priceContext } from "../src/lib/prices";
+import { priceContextAsOf } from "../src/lib/prices";
 import { buildSignal } from "../src/lib/scoring";
-import type { FilingRef, InsiderBuy, IssuerSignal, ParsedFiling } from "../src/types";
+import { restUpsert } from "../src/lib/rest";
+import type {
+  FilingRef,
+  InsiderBuy,
+  IssuerSignal,
+  ParsedFiling,
+} from "../src/types";
 
-interface Args {
+export interface IngestOptions {
+  on?: string;
   days: number;
   limit: number;
   minStore: number;
   dryRun: boolean;
+  notify?: boolean;
 }
 
 const log = (...msg: unknown[]) => console.error("[formfour:ingest]", ...msg);
@@ -29,17 +39,19 @@ function loadEnvLocal(): void {
   }
 }
 
-function parseArgs(): Args {
-  const args = new Map<string, string>();
+function parseArgs(): IngestOptions & { notify: boolean } {
   const argv = process.argv.slice(2);
+  const args = new Map<string, string>();
   for (let i = 0; i < argv.length; i += 2) {
     args.set(argv[i].replace(/^--/, ""), argv[i + 1] ?? "");
   }
   return {
+    on: args.get("on") || undefined,
     days: Math.max(1, Number.parseInt(args.get("days") ?? "1", 10)),
     limit: Number.parseInt(args.get("limit") ?? "0", 10),
     minStore: Number.parseInt(args.get("min-store") ?? "35", 10),
     dryRun: args.has("dry-run"),
+    notify: !args.has("no-notify"),
   };
 }
 
@@ -48,7 +60,6 @@ function formatUsd(n: number): string {
   if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
   return String(Math.round(n));
 }
-
 function valueTier(v: number): number {
   if (v >= 1_000_000) return 30;
   if (v >= 500_000) return 26;
@@ -98,23 +109,38 @@ interface Candidate {
   totalValueUsd: number;
 }
 
-async function main(): Promise<void> {
-  loadEnvLocal();
-  const opts = parseArgs();
+async function requireSupabase() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key)
+    throw new Error("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
+  return { url, key };
+}
+
+export async function runIngest(opts: IngestOptions): Promise<string | null> {
   const started = Date.now();
 
-  log(`scanning last ${opts.days} trading day(s)…`);
-  const indexes = await fetchRecentMasterIndexes(opts.days);
+  let indexes: DailyIndex[];
+  if (opts.on) {
+    const idx = await fetchMasterByDate(opts.on);
+    if (!idx || idx.refs.length === 0) {
+      log(`${opts.on}: no master index (weekend/holiday?) — skipping`);
+      return null;
+    }
+    indexes = [idx];
+  } else {
+    indexes = await fetchRecentMasterIndexes(opts.days);
+  }
   if (indexes.length === 0) throw new Error("No EDGAR master indexes found");
   const signalDate = indexes[0].date;
 
   let refs = indexes.flatMap((idx) => idx.refs);
   log(
-    `${refs.length} Form 4 filings across ${indexes.length} trading day(s) (${indexes[indexes.length - 1].date} → ${signalDate})`,
+    `[${signalDate}] ${refs.length} Form 4 filings across ${indexes.length} trading day(s)`,
   );
   if (opts.limit > 0 && opts.limit < refs.length) {
     refs = refs.slice(0, opts.limit);
-    log(`limited to ${refs.length} filings (--limit 0 for all)`);
+    log(`limited to ${refs.length} filings`);
   }
 
   const byIssuer = await collectBuys(refs);
@@ -137,13 +163,13 @@ async function main(): Promise<void> {
     )
     .slice(0, 60);
 
-  log(`enriching top ${candidates.length} candidates with price context…`);
+  log(`enriching top ${candidates.length} candidates with as-of price context…`);
 
   const signals: IssuerSignal[] = [];
   for (const c of candidates) {
     let price = null;
     const ticker = (await tickerForCik(c.cik).catch(() => null)) ?? c.symbol;
-    if (ticker) price = await priceContext(ticker);
+    if (ticker) price = await priceContextAsOf(ticker, signalDate);
     signals.push(buildSignal(c.cik, c.name, c.buys, price));
   }
 
@@ -152,7 +178,7 @@ async function main(): Promise<void> {
     .sort((a, b) => b.score - a.score);
 
   log(
-    `${kept.length} signals ≥ ${opts.minStore} points for ${signalDate}; top: ` +
+    `${kept.length} signals ≥ ${opts.minStore} for ${signalDate}; top: ` +
       kept
         .slice(0, 5)
         .map((s) => `${s.ticker ?? s.issuerName.slice(0, 12)}(${s.score})`)
@@ -160,20 +186,15 @@ async function main(): Promise<void> {
   );
 
   if (opts.dryRun) {
-    console.log("\nDRY RUN — nothing stored. Top signals:");
-    for (const s of kept.slice(0, 10)) {
+    for (const s of kept.slice(0, 8)) {
       console.log(
-        `  score ${String(s.score).padStart(2)}  ${(s.ticker ?? "?").padEnd(6)} ${s.issuerName.slice(0, 32).padEnd(32)} ${s.insiderCount} ins  $${formatUsd(s.totalValueUsd)}`,
+        `  score ${String(s.score).padStart(2)}  ${(s.ticker ?? "?").padEnd(6)} ${s.issuerName.slice(0, 30).padEnd(30)} $${formatUsd(s.totalValueUsd)}`,
       );
     }
-    return;
+    return signalDate;
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY in .env.local");
-  }
+  await requireSupabase();
 
   if (kept.length > 0) {
     const rows = kept.map((s) => ({
@@ -187,29 +208,56 @@ async function main(): Promise<void> {
       pct_from_low: s.price ? Number(s.price.pctFromLow.toFixed(2)) : null,
       details: s,
     }));
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/daily_signals?on_conflict=signal_date,issuer_cik`,
-      {
-      method: "POST",
-      headers: {
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        "Content-Type": "application/json",
-        Prefer: "resolution=merge-duplicates,return=minimal",
-      },
-      body: JSON.stringify(rows),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Supabase upsert failed: HTTP ${res.status} — ${body.slice(0, 300)}`);
-    }
+    await restUpsert("daily_signals", rows, "signal_date,issuer_cik");
     log(`stored ${rows.length} signals for ${signalDate}`);
+
+    const buyRowsMap = new Map<string, Record<string, unknown>>();
+    for (const s of kept) {
+      if (!s.ticker) continue;
+      for (const b of byIssuer.get(s.issuerCik)?.buys ?? []) {
+        if (!b.tradedAt) continue;
+        const key = `${s.issuerCik}|${b.tradedAt}|${b.ownerName}`;
+        const existing = buyRowsMap.get(key);
+        if (existing) {
+          existing.shares = Number(existing.shares) + b.shares;
+          existing.value_usd = Number(existing.value_usd) + b.valueUsd;
+          if (b.ownedAfter) {
+            existing.owned_after = Math.max(
+              Number(existing.owned_after ?? 0),
+              b.ownedAfter,
+            );
+          }
+        } else {
+          buyRowsMap.set(key, {
+            signal_date: signalDate,
+            traded_at: b.tradedAt,
+            issuer_cik: s.issuerCik,
+            ticker: s.ticker,
+            owner_name: b.ownerName,
+            owner_cik: b.ownerCik,
+            role: b.role,
+            shares: b.shares,
+            price: b.price,
+            value_usd: b.valueUsd,
+            owned_after: b.ownedAfter ?? null,
+            base_price: s.price?.close ?? null,
+          });
+        }
+      }
+    }
+    const buyRows = [...buyRowsMap.values()];
+    await restUpsert(
+      "insider_buys",
+      buyRows,
+      "signal_date,issuer_cik,owner_name,traded_at",
+    );
+    log(`stored ${buyRows.length} insider-buy ledger rows`);
   } else {
     log(`no signals ≥ ${opts.minStore} — nothing stored`);
   }
 
   const notifyUrl = process.env.DIGEST_NOTIFY_URL;
-  if (notifyUrl && process.env.CRON_SECRET) {
+  if (opts.notify && notifyUrl && process.env.CRON_SECRET) {
     try {
       const res = await fetch(notifyUrl, {
         headers: { authorization: `Bearer ${process.env.CRON_SECRET}` },
@@ -222,9 +270,13 @@ async function main(): Promise<void> {
   }
 
   log(`done in ${((Date.now() - started) / 1000).toFixed(0)}s`);
+  return signalDate;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1]?.includes("ingest")) {
+  loadEnvLocal();
+  runIngest(parseArgs()).catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

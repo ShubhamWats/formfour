@@ -134,6 +134,16 @@ export default async function SignalsPage() {
                       score {s.score}
                     </span>
                   </div>
+                  <div className="mt-1">
+                    <a
+                      href={`/api/card?ticker=${encodeURIComponent(s.ticker ?? "")}&name=${encodeURIComponent(s.issuerName)}&score=${s.score}&insiders=${s.insiderCount}&value=${formatUsd(s.totalValueUsd).replace("$", "")}${s.price ? `&pctlow=${Math.round(s.price.pctFromLow)}` : ""}&buyer=${encodeURIComponent(s.topBuys[0]?.ownerName ?? "")}&role=${encodeURIComponent(s.topBuys[0]?.role ?? "")}`}
+                      className="text-[11px] text-zinc-600 hover:text-emerald-400"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      share card ↗
+                    </a>
+                  </div>
                   <p className="mt-2 text-xs text-zinc-500">
                     {s.insiderCount} insider{s.insiderCount > 1 ? "s" : ""} · ${formatUsd(s.totalValueUsd)} combined
                     {s.price !== null && <> · {Math.round(s.price.pctFromLow)}% above 52-wk low</>}
