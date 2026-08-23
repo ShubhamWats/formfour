@@ -16,6 +16,7 @@ export interface InsiderBuy {
   valueUsd: number;
   tradedAt: string;
   code: string;
+  ownedAfter?: number;
 }
 
 export interface ParsedFiling {
@@ -32,6 +33,9 @@ export interface PriceContext {
   low52: number;
   high52: number;
   pctFromLow: number;
+  chg1wPct?: number;
+  chg1mPct?: number;
+  rangePosPct?: number;
 }
 
 export interface IssuerSignal {

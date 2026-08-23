@@ -212,6 +212,9 @@ function parseOwnershipDoc(xml: string): ParsedFiling | null {
       valueUsd: Math.round(shares * price),
       tradedAt: field(t.transactionDate, "value") || period,
       code,
+      ownedAfter:
+        toNum(field(obj(t.postTransactionAmounts), "sharesOwnedFollowingTransaction")) ||
+        undefined,
     });
   }
 

@@ -16,7 +16,7 @@ export async function GET(req: Request) {
         .from("subscribers")
         .update({ status: "active", confirmed_at: new Date().toISOString() })
         .eq("confirm_token", token)
-        .eq("status", "pending")
+        .in("status", ["pending", "unsubscribed"])
         .select("id")
         .maybeSingle();
       if (updated.error || !updated.data) {

@@ -7,7 +7,6 @@ import {
 } from "../src/lib/edgar";
 import { priceContext } from "../src/lib/prices";
 import { buildSignal } from "../src/lib/scoring";
-import { adminClient } from "../src/lib/supabase/admin";
 import type { FilingRef, InsiderBuy, IssuerSignal, ParsedFiling } from "../src/types";
 
 interface Args {
@@ -170,7 +169,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  const supa = adminClient();
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY in .env.local");
+  }
 
   if (kept.length > 0) {
     const rows = kept.map((s) => ({
@@ -184,10 +187,22 @@ async function main(): Promise<void> {
       pct_from_low: s.price ? Number(s.price.pctFromLow.toFixed(2)) : null,
       details: s,
     }));
-    const { error } = await supa
-      .from("daily_signals")
-      .upsert(rows, { onConflict: "signal_date,issuer_cik" });
-    if (error) throw new Error(`Supabase upsert failed: ${error.message}`);
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/daily_signals?on_conflict=signal_date,issuer_cik`,
+      {
+      method: "POST",
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(rows),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Supabase upsert failed: HTTP ${res.status} — ${body.slice(0, 300)}`);
+    }
     log(`stored ${rows.length} signals for ${signalDate}`);
   } else {
     log(`no signals ≥ ${opts.minStore} — nothing stored`);

@@ -1,4 +1,4 @@
-import type { IssuerSignal } from "@/types";
+import type { IssuerSignal, InsiderBuy, PriceContext } from "@/types";
 import { formatUsd } from "./scoring";
 
 export interface SendResult {
@@ -18,56 +18,138 @@ function esc(s: string): string {
 const BASE_STYLE =
   "font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;";
 
+const BG = "#09090b";
+const CARD = "#141417";
+const BORDER = "#26262b";
+const TEXT = "#f4f4f5";
+const MUTED = "#9d9da8";
+const FAINT = "#6e6e78";
+const GREEN = "#34d399";
+
+function fmtPct(n: number | undefined): string {
+  if (n === undefined || !Number.isFinite(n)) return "—";
+  return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+}
+
+function pctColor(n: number | undefined): string {
+  if (n === undefined || !Number.isFinite(n)) return MUTED;
+  return n >= 0 ? GREEN : "#f87171";
+}
+
+function shortDate(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function fmtShares(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+  return String(Math.round(n));
+}
+
+function secFilingsUrl(cik: string): string {
+  return `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=4&dateb=&owner=include&count=40`;
+}
+
+function priceRow(p: PriceContext): string {
+  const cells: Array<[string, string, string | null]> = [
+    ["PRICE", `$${p.close.toFixed(2)}`, null],
+    ["VS 52W LOW", `${Math.round(p.pctFromLow)}%`, p.pctFromLow <= 15 ? GREEN : null],
+    ["52W RANGE", `$${p.low52.toFixed(2)}–${p.high52.toFixed(2)}`, null],
+    ["1 WEEK", fmtPct(p.chg1wPct), pctColor(p.chg1wPct)],
+    ["1 MONTH", fmtPct(p.chg1mPct), pctColor(p.chg1mPct)],
+  ];
+  const tds = cells
+    .map(
+      ([label, val, color]) =>
+        `<td style="${BASE_STYLE}padding:8px 14px 8px 0;font-size:11px"><span style="color:${FAINT};letter-spacing:.5px">${label}</span><br><strong style="color:${color ?? TEXT};font-size:13px">${esc(val)}</strong></td>`,
+    )
+    .join("");
+  return `<table cellpadding="0" cellspacing="0" width="100%" style="margin-top:12px;background:#0e0e11;border:1px solid ${BORDER};border-radius:8px" bgcolor="#0e0e11"><tr>${tds}</tr></table>`;
+}
+
+function buyerRows(buys: InsiderBuy[]): string {
+  const rows = buys
+    .map(
+      (b) => `<tr>
+        <td style="${BASE_STYLE}padding:8px 0;border-bottom:1px solid ${BORDER};font-size:13px;color:${TEXT};font-weight:600">${esc(b.ownerName)}
+          <br><span style="font-size:11px;color:${MUTED}">${esc(b.role)}</span></td>
+        <td align="right" style="${BASE_STYLE}padding:8px 0;border-bottom:1px solid ${BORDER};font-size:12px;color:${TEXT}">
+          <strong>$${formatUsd(b.valueUsd)}</strong>
+          <br><span style="font-size:11px;color:${MUTED}">${fmtShares(b.shares)} sh @ $${b.price.toFixed(2)} · ${esc(shortDate(b.tradedAt))}${b.ownedAfter && b.ownedAfter > 0 ? ` · owns ${fmtShares(b.ownedAfter)}` : ""}</span>
+        </td>
+      </tr>`,
+    )
+    .join("");
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px">${rows}</table>`;
+}
+
+function signalCard(s: IssuerSignal): string {
+  const prox =
+    s.price === null
+      ? ""
+      : ` · ${Math.round(s.price.pctFromLow)}% above 52w low`;
+  const windowDates =
+    s.firstTradeDate === s.lastTradeDate
+      ? shortDate(s.lastTradeDate)
+      : `${shortDate(s.firstTradeDate)} – ${shortDate(s.lastTradeDate)}`;
+
+  return `
+  <tr><td style="padding:0 0 14px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${BORDER};border-radius:12px;border-collapse:separate;background:${CARD}" bgcolor="${CARD}">
+      <tr><td style="padding:18px">
+
+        <table width="100%" cellpadding="0" cellspacing="0"><tr>
+          <td style="${BASE_STYLE}font-size:17px;font-weight:800;color:${GREEN}">
+            ${esc(s.ticker ?? "—")}${s.ticker ? "" : "·"}<span style="color:${TEXT};font-weight:600;font-size:15px"> ${s.ticker ? "·" : ""} ${esc(s.issuerName.slice(0, 42))}</span>
+          </td>
+          <td align="right" style="${BASE_STYLE}">
+            <span style="background:${GREEN};color:#09090b;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:800">score ${s.score}</span>
+          </td>
+        </tr></table>
+
+        <div style="${BASE_STYLE}font-size:13px;color:${MUTED};margin-top:6px">
+          ${s.insiderCount} insider${s.insiderCount > 1 ? "s" : ""} bought
+          <strong style="color:${GREEN}">$${formatUsd(s.totalValueUsd)}</strong> combined · traded ${windowDates}${prox}
+        </div>
+
+        ${s.price ? priceRow(s.price) : ""}
+
+        <div style="${BASE_STYLE}font-size:13px;color:${MUTED};margin-top:12px;line-height:1.5">
+          <span style="color:${GREEN};font-weight:700">WHY IT FLAGGED</span> · ${esc(s.reasons.join(" · "))}
+        </div>
+
+        ${buyerRows(s.topBuys)}
+
+        <div style="${BASE_STYLE}margin-top:12px">
+          <a href="${secFilingsUrl(s.issuerCik)}" style="font-size:12px;color:${GREEN}">View their Form&nbsp;4 filings on SEC.gov ↗</a>
+        </div>
+      </td></tr>
+    </table>
+  </td></tr>`;
+}
+
 export function renderDigestHtml(
   signals: IssuerSignal[],
   dateLabel: string,
   unsubscribeUrl: string,
 ): string {
-  const cards = signals
-    .map((s) => {
-      const prox =
-        s.price === null
-          ? ""
-          : `<span style="color:#6b7280">·</span> ${Math.round(s.price.pctFromLow)}% vs 52w low`;
-      const buys = s.topBuys
-        .slice(0, 3)
-        .map(
-          (b) =>
-            `<div style="font-size:13px;color:#4b5563;margin-top:4px">${esc(b.ownerName)} <span style="color:#9ca3af">(${esc(b.role)})</span> — $${formatUsd(b.valueUsd)}</div>`,
-        )
-        .join("");
-      return `
-      <tr><td style="padding:10px 0">
-        <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;border-collapse:separate">
-          <tr>
-            <td style="padding:14px 16px">
-              <table width="100%" cellpadding="0" cellspacing="0"><tr>
-                <td style="${BASE_STYLE}font-size:16px;font-weight:700;color:#111827">${esc(s.ticker ?? "—")} · ${esc(s.issuerName.slice(0, 40))}</td>
-                <td align="right" style="${BASE_STYLE}"><span style="background:#111827;color:#fff;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600">score ${s.score}</span></td>
-              </tr></table>
-              <div style="${BASE_STYLE}font-size:13px;color:#6b7280;margin-top:4px">${s.insiderCount} insider${s.insiderCount > 1 ? "s" : ""} · $${formatUsd(s.totalValueUsd)} combined ${prox}</div>
-              <div style="${BASE_STYLE}font-size:13px;color:#374151;margin-top:8px">${esc(s.reasons.join(" · "))}</div>
-              ${buys}
-            </td>
-          </tr>
-        </table>
-      </td></tr>`;
-    })
-    .join("");
+  const cards = signals.map(signalCard).join("");
 
-  return `<!DOCTYPE html><html><body style="margin:0;background:#f9fafb">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:24px 12px"><tr><td align="center">
-    <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
-      <tr><td style="${BASE_STYLE}padding:8px 4px 20px">
-        <span style="font-weight:800;font-size:18px;letter-spacing:2px;color:#111827">FORMFOUR</span>
-        <span style="color:#9ca3af;font-size:12px;margin-left:8px">insider buying alerts</span>
+  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:${BG}" bgcolor="${BG}">
+  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BG}" style="background:${BG};padding:24px 12px"><tr><td align="center">
+    <table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%">
+      <tr><td style="${BASE_STYLE}padding:8px 4px 22px">
+        <span style="font-weight:800;font-size:18px;letter-spacing:3px;color:${TEXT}">FORM<span style="color:${GREEN}">FOUR</span></span>
+        <span style="color:${FAINT};font-size:12px;margin-left:8px">insider buying alerts</span>
       </td></tr>
-      <tr><td style="${BASE_STYLE}font-size:20px;font-weight:700;color:#111827;padding-bottom:4px">Top insider purchases</td></tr>
-      <tr><td style="${BASE_STYLE}font-size:13px;color:#6b7280;padding-bottom:12px">${esc(dateLabel)} · sourced from SEC Form 4 filings</td></tr>
-      ${cards || '<tr><td style="color:#6b7280;font-size:14px">No qualifying signals today.</td></tr>'}
-      <tr><td style="padding:28px 4px 8px;font-size:11px;color:#9ca3af;line-height:1.5">
+      <tr><td style="${BASE_STYLE}font-size:22px;font-weight:700;color:${TEXT};padding-bottom:4px">Top insider purchases</td></tr>
+      <tr><td style="${BASE_STYLE}font-size:13px;color:${MUTED};padding-bottom:16px">${esc(dateLabel)} · open-market buys only, from SEC Form 4 filings</td></tr>
+      ${cards || '<tr><td style="color:' + MUTED + ';font-size:14px">No qualifying signals today.</td></tr>'}
+      <tr><td style="padding:28px 4px 8px;font-size:11px;color:${FAINT};line-height:1.6">
         FormFour republishes publicly available SEC filing data for research purposes. This is not investment advice or a recommendation to buy or sell any security.
-        <br><a href="${esc(unsubscribeUrl)}" style="color:#9ca3af">Unsubscribe</a>
+        <br><a href="${esc(unsubscribeUrl)}" style="color:${FAINT}">Unsubscribe</a>
       </td></tr>
     </table>
   </td></tr></table>
@@ -75,14 +157,15 @@ export function renderDigestHtml(
 }
 
 export function renderConfirmHtml(confirmUrl: string): string {
-  return `<!DOCTYPE html><html><body style="margin:0;background:#f9fafb">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 12px"><tr><td align="center">
-    <table width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#fff;border:1px solid #e5e7eb;border-radius:12px">
-      <tr><td style="${BASE_STYLE}padding:32px;text-align:center">
-        <div style="font-weight:800;font-size:18px;letter-spacing:2px;color:#111827;padding-bottom:16px">FORMFOUR</div>
-        <div style="font-size:15px;color:#111827;padding-bottom:8px;font-weight:600">Confirm your subscription</div>
-        <p style="font-size:13px;color:#6b7280;margin:0 0 20px">One click and you'll start receiving insider-buying alerts from SEC Form 4 data.</p>
-        <a href="${esc(confirmUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:600">Confirm subscription</a>
+  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:${BG}" bgcolor="${BG}">
+  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BG}" style="background:${BG};padding:40px 12px"><tr><td align="center">
+    <table width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:${CARD};border:1px solid ${BORDER};border-radius:12px" bgcolor="${CARD}">
+      <tr><td style="${BASE_STYLE}padding:36px;text-align:center">
+        <div style="font-weight:800;font-size:18px;letter-spacing:3px;color:${TEXT};padding-bottom:18px">FORM<span style="color:${GREEN}">FOUR</span></div>
+        <div style="font-size:15px;color:${TEXT};padding-bottom:8px;font-weight:600">Confirm your subscription</div>
+        <p style="font-size:13px;color:${MUTED};margin:0 0 22px;line-height:1.6">One click and you'll start receiving insider-buying alerts from SEC Form 4 data.</p>
+        <a href="${esc(confirmUrl)}" style="display:inline-block;background:${GREEN};color:#09090b;text-decoration:none;border-radius:8px;padding:11px 24px;font-size:14px;font-weight:700">Confirm subscription</a>
+        <p style="font-size:11px;color:${FAINT};margin-top:22px">Didn't request this? Ignore this email.</p>
       </td></tr>
     </table>
   </td></tr></table>
@@ -111,10 +194,12 @@ export async function sendEmail(
     });
     if (!res.ok) {
       const body = await res.text();
+      console.error(`[email] Resend ${res.status} for ${to}: ${body.slice(0, 300)}`);
       return { ok: false, error: `Resend ${res.status}: ${body.slice(0, 200)}` };
     }
     return { ok: true };
   } catch (err) {
+    console.error(`[email] fetch failed for ${to}:`, err);
     return { ok: false, error: String(err) };
   }
 }

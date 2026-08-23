@@ -61,7 +61,27 @@ async function computePriceContext(
 
     if (!(close > 0) || !(low52 > 0) || !(high52 > 0)) return null;
 
-    return { ticker, close, low52, high52, pctFromLow: ((close - low52) / low52) * 100 };
+    const closes = (r.indicators?.quote?.[0]?.close ?? []).filter(
+      (n): n is number => n !== null && n > 0,
+    );
+    const lastClose = close;
+    const chgSince = (back: number): number | undefined => {
+      const i = closes.length - 1 - back;
+      if (i < 0 || !(closes[i] > 0)) return undefined;
+      return ((lastClose - closes[i]) / closes[i]) * 100;
+    };
+
+    return {
+      ticker,
+      close,
+      low52,
+      high52,
+      pctFromLow: ((close - low52) / low52) * 100,
+      chg1wPct: chgSince(5),
+      chg1mPct: chgSince(21),
+      rangePosPct:
+        high52 > low52 ? ((close - low52) / (high52 - low52)) * 100 : undefined,
+    };
   } catch {
     return null;
   }
