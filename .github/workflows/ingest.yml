@@ -1,0 +1,34 @@
+name: nightly-ingest
+
+on:
+  schedule:
+    # 10:00 UTC = 06:00 ET, Tue–Sat: after EDGAR finalizes the prior day's
+    # index, before US market open. Covers Monday–Friday filings.
+    - cron: "0 10 * * 2-6"
+  workflow_dispatch:
+
+concurrency:
+  group: ingest
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Ingest SEC Form 4 signals and store to Supabase
+        env:
+          EDGAR_USER_AGENT: ${{ secrets.EDGAR_USER_AGENT }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DIGEST_NOTIFY_URL: ${{ secrets.DIGEST_NOTIFY_URL }}
+        run: npx tsx scripts/ingest.ts --days 2 --min-store 40
