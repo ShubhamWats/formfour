@@ -2,9 +2,10 @@ import type { IssuerSignal } from "@/types";
 import { formatUsd } from "./scoring";
 
 const API = "https://api.anthropic.com/v1/messages";
+const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export function aiConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY);
 }
 
 async function claude(
@@ -31,7 +32,7 @@ async function claude(
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
-      console.error(`[ai] HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      console.error(`[ai] anthropic HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
       return null;
     }
     const data = (await res.json()) as {
@@ -39,9 +40,66 @@ async function claude(
     };
     return data.content?.[0]?.text?.trim() ?? null;
   } catch (err) {
-    console.error("[ai]", err);
+    console.error("[ai] anthropic:", err);
     return null;
   }
+}
+
+async function gemini(
+  system: string,
+  user: string,
+  maxTokens = 500,
+): Promise<string | null> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  const model = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
+  try {
+    const res = await fetch(
+      `${GEMINI_API}/${model}:generateContent?key=${encodeURIComponent(key)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: [{ role: "user", parts: [{ text: user }] }],
+          generationConfig: {
+            maxOutputTokens: Math.max(maxTokens * 4, 1024),
+            temperature: 0.7,
+          },
+        }),
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+    if (!res.ok) {
+      console.error(`[ai] gemini HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      return null;
+    }
+    const data = (await res.json()) as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{ text?: string; thought?: boolean }>;
+        };
+      }>;
+    };
+    const text =
+      data.candidates?.[0]?.content?.parts
+        ?.filter((p) => p.thought !== true)
+        .map((p) => p.text ?? "")
+        .join("")
+        .trim() || null;
+    return text || null;
+  } catch (err) {
+    console.error("[ai] gemini:", err);
+    return null;
+  }
+}
+
+async function ask(
+  system: string,
+  user: string,
+  maxTokens: number,
+): Promise<string | null> {
+  return (await claude(system, user, maxTokens)) ?? (await gemini(system, user, maxTokens));
 }
 
 export async function generateNarrative(s: IssuerSignal): Promise<string | null> {
@@ -61,11 +119,10 @@ export async function generateNarrative(s: IssuerSignal): Promise<string | null>
     `Conviction score ${s.score}/99 based on: ${s.reasons.join("; ")}.`,
   ].join("\n");
 
-  return claude(
-    "You write for FormFour, an insider-buying research digest for long-term investors. Given factual data about an SEC Form 4 insider-buying cluster, write 2-3 sentences of neutral analysis: what happened, who did it, and what context makes it interesting or uninteresting. Be concrete and grounded ONLY in the provided facts — never speculate beyond them, never give advice, never use hype language. Plain English, no headings.",
-    facts,
-    300,
-  );
+  const SYSTEM =
+    "You write for FormFour, an insider-buying research digest for long-term investors. Given factual data about an SEC Form 4 insider-buying cluster, write 2-3 sentences of neutral analysis: what happened, who did it, and what context makes it interesting or uninteresting. Be concrete and grounded ONLY in the provided facts — never speculate beyond them, never give advice, never use hype language. Plain English, no headings.";
+
+  return ask(SYSTEM, facts, 300);
 }
 
 export async function generateDailyBrief(signals: IssuerSignal[]): Promise<string | null> {
@@ -78,9 +135,8 @@ export async function generateDailyBrief(signals: IssuerSignal[]): Promise<strin
     )
     .join("\n");
 
-  return claude(
-    "You write the opening note for FormFour, a daily insider-buying digest for long-term investors. Given today's flagged clusters, write a tight 3-4 sentence morning brief: what stands out across today's cluster(s), any pattern worth noticing (sector, size, proximity to lows), and one honest caveat. Ground everything in the provided facts only. No advice, no predictions, no hype. Plain English.",
-    `Today's flagged clusters:\n${list}`,
-    350,
-  );
+  const SYSTEM =
+    "You write the opening note for FormFour, a daily insider-buying digest for long-term investors. Given today's flagged clusters, write a tight 3-4 sentence morning brief: what stands out across today's cluster(s), any pattern worth noticing (sector, size, proximity to lows), and one honest caveat. Ground everything in the provided facts only. No advice, no predictions, no hype. Plain English.";
+
+  return ask(SYSTEM, `Today's flagged clusters:\n${list}`, 350);
 }
