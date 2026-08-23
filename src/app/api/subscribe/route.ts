@@ -1,8 +1,32 @@
 import { NextResponse } from "next/server";
 import { adminClient } from "@/lib/supabase/admin";
-import { renderConfirmHtml, sendEmail } from "@/lib/email";
+import { renderConfirmHtml, renderFounderPingHtml, sendEmail } from "@/lib/email";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+async function founderPing(
+  supa: ReturnType<typeof adminClient>,
+  email: string,
+): Promise<void> {
+  const founder = process.env.FOUNDER_EMAIL;
+  if (!founder) return;
+  try {
+    const total = await supa
+      .from("subscribers")
+      .select("*", { count: "exact", head: true });
+    const active = await supa
+      .from("subscribers")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "active");
+    await sendEmail(
+      founder,
+      `🎉 New FormFour signup: ${email} (${active.count ?? 0}/${total.count ?? 0} active)`,
+      renderFounderPingHtml(email, total.count ?? 0, active.count ?? 0),
+    );
+  } catch (err) {
+    console.error("[founder-ping]", err);
+  }
+}
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as { email?: string } | null;
@@ -38,6 +62,7 @@ export async function POST(req: Request) {
         .single();
       if (inserted.error || !inserted.data) throw inserted.error;
       token = inserted.data.confirm_token as string;
+      await founderPing(supa, email);
     }
 
     const site = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin;

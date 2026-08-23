@@ -20,8 +20,7 @@ export default function Home() {
         <nav className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
           <span className="text-lg font-extrabold tracking-[0.2em]">FORMFOUR</span>
           <div className="flex items-center gap-6 text-sm text-zinc-400">
-            <Link href="#how" className="hover:text-white">How it works</Link>
-            <Link href="#pricing" className="hover:text-white">Pricing</Link>
+            <Link href="/how-it-works" className="hover:text-white">How it works</Link>
             <Link
               href="#signup"
               className="rounded-md bg-emerald-400 px-4 py-2 font-semibold text-zinc-950 hover:bg-emerald-300"
@@ -85,66 +84,29 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="how" className="border-y border-white/5 bg-zinc-900/40">
-          <div className="mx-auto grid w-full max-w-6xl gap-8 px-6 py-16 md:grid-cols-3">
-            {[
-              ["01", "Scan", "Every SEC Form 4 filed yesterday is parsed overnight — purchases only, sales ignored."],
-              ["02", "Score", "Clusters of insiders, dollar size, and proximity to 52-week lows are weighted into one conviction score."],
-              ["03", "Deliver", "Only signals scoring 55+ reach your inbox, ranked and explained in plain English."],
-            ].map(([n, title, body]) => (
-              <div key={n} className="flex flex-col gap-3">
-                <span className="font-mono text-xs text-emerald-400">{n}</span>
-                <h3 className="text-lg font-semibold">{title}</h3>
-                <p className="text-sm leading-relaxed text-zinc-400">{body}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section id="pricing" className="mx-auto w-full max-w-6xl px-6 py-20">
-          <h2 className="text-center text-3xl font-bold tracking-tight">Simple pricing</h2>
-          <p className="mx-auto mt-3 max-w-md text-center text-sm text-zinc-400">
-            Start free. Upgrade when you want the daily edge.
-          </p>
-          <div className="mx-auto mt-10 grid max-w-3xl gap-6 md:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-8">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">Weekly</h3>
-              <div className="mt-3 flex items-baseline gap-1">
-                <span className="text-4xl font-bold">$0</span>
-                <span className="text-sm text-zinc-500">forever</span>
-              </div>
-              <ul className="mt-6 space-y-3 text-sm text-zinc-300">
-                <li>✓ Digest every Monday</li>
-                <li>✓ Top 10 signals of the week</li>
-                <li>✓ Plain-English breakdowns</li>
-              </ul>
-              <a
-                href="#signup"
-                className="mt-8 block rounded-lg border border-white/15 py-3 text-center text-sm font-semibold hover:bg-white/5"
-              >
-                Subscribe free
-              </a>
+        <section className="border-y border-white/5 bg-zinc-900/40">
+          <div className="mx-auto w-full max-w-6xl px-6 py-16">
+            <div className="grid gap-8 md:grid-cols-3">
+              {[
+                ["01", "Scan", "Every SEC Form 4 filed yesterday is parsed overnight — purchases only, sales ignored."],
+                ["02", "Score", "Clusters of insiders, dollar size, and proximity to 52-week lows are weighted into one conviction score."],
+                ["03", "Deliver", "Only signals scoring 55+ reach your inbox, ranked and explained in plain English."],
+              ].map(([n, title, body]) => (
+                <div key={n} className="flex flex-col gap-3">
+                  <span className="font-mono text-xs text-emerald-400">{n}</span>
+                  <h3 className="text-lg font-semibold">{title}</h3>
+                  <p className="text-sm leading-relaxed text-zinc-400">{body}</p>
+                </div>
+              ))}
             </div>
-            <div className="relative rounded-2xl border border-emerald-400/40 bg-gradient-to-b from-emerald-400/10 to-transparent p-8">
-              <span className="absolute -top-3 right-6 rounded-full bg-emerald-400 px-3 py-1 text-[11px] font-bold text-zinc-950">
-                MOST POPULAR
-              </span>
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-emerald-300">Daily Pro</h3>
-              <div className="mt-3 flex items-baseline gap-1">
-                <span className="text-4xl font-bold">$15</span>
-                <span className="text-sm text-zinc-500">/mo · or $129/yr</span>
-              </div>
-              <ul className="mt-6 space-y-3 text-sm text-zinc-200">
-                <li>✓ Alerts every trading morning</li>
-                <li>✓ Score 55+ only, pre-market</li>
-                <li>✓ Watchlist + dashboard (coming)</li>
-              </ul>
-              <a
-                href="#signup"
-                className="mt-8 block rounded-lg bg-emerald-400 py-3 text-center text-sm font-semibold text-zinc-950 hover:bg-emerald-300"
+            <div className="mt-10 text-center">
+              <Link
+                href="/how-it-works"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-400 hover:text-emerald-300"
               >
-                Go Pro after signup
-              </a>
+                Read the full breakdown — scoring rubric, what we ignore, why it matters
+                <span aria-hidden>→</span>
+              </Link>
             </div>
           </div>
         </section>

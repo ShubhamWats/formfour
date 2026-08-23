@@ -156,8 +156,34 @@ export function renderDigestHtml(
 </body></html>`;
 }
 
-export function renderConfirmHtml(confirmUrl: string): string {
+export function renderFounderPingHtml(
+  email: string,
+  total: number,
+  active: number,
+): string {
   return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:${BG}" bgcolor="${BG}">
+  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BG}" style="background:${BG};padding:32px 12px"><tr><td align="center">
+    <table width="440" cellpadding="0" cellspacing="0" style="max-width:440px;width:100%;background:${CARD};border:1px solid ${BORDER};border-radius:12px" bgcolor="${CARD}">
+      <tr><td style="${BASE_STYLE}padding:28px;text-align:center">
+        <div style="font-size:30px;padding-bottom:10px">🎉</div>
+        <div style="font-size:16px;color:${TEXT};font-weight:700;padding-bottom:6px">New signup</div>
+        <div style="font-size:14px;color:${GREEN};font-weight:600;padding-bottom:18px">${esc(email)}</div>
+        <table width="100%" cellpadding="0" cellspacing="0"><tr>
+          <td style="${BASE_STYLE}background:#0e0e11;border:1px solid ${BORDER};border-radius:8px;padding:12px">
+            <span style="font-size:11px;color:${FAINT};letter-spacing:.5px">TOTAL</span><br>
+            <strong style="font-size:20px;color:${TEXT}">${total}</strong></td>
+          <td width="10"></td>
+          <td style="${BASE_STYLE}background:#0e0e11;border:1px solid ${BORDER};border-radius:8px;padding:12px">
+            <span style="font-size:11px;color:${FAINT};letter-spacing:.5px">ACTIVE</span><br>
+            <strong style="font-size:20px;color:${GREEN}">${active}</strong></td>
+        </tr></table>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+}
+
+export function renderConfirmHtml(confirmUrl: string): string {  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:${BG}" bgcolor="${BG}">
   <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BG}" style="background:${BG};padding:40px 12px"><tr><td align="center">
     <table width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:${CARD};border:1px solid ${BORDER};border-radius:12px" bgcolor="${CARD}">
       <tr><td style="${BASE_STYLE}padding:36px;text-align:center">
