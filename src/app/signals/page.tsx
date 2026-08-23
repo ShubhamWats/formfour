@@ -149,6 +149,11 @@ export default async function SignalsPage() {
                     {s.price !== null && <> · {Math.round(s.price.pctFromLow)}% above 52-wk low</>}
                   </p>
                   <p className="mt-3 text-sm leading-relaxed text-zinc-300">{s.reasons.join(" · ")}</p>
+                  {s.narrative && (
+                    <p className="mt-3 border-l-2 border-emerald-400/40 pl-3 text-sm leading-relaxed text-zinc-400">
+                      {s.narrative}
+                    </p>
+                  )}
                   {s.topBuys.slice(0, 3).map((b) => (
                     <p key={b.ownerName} className="mt-2 text-xs text-zinc-500">
                       <span className="font-semibold text-zinc-400">{b.ownerName}</span> ({b.role}) — ${formatUsd(b.valueUsd)}

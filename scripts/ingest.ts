@@ -9,7 +9,8 @@ import {
 } from "../src/lib/edgar";
 import { priceContextAsOf } from "../src/lib/prices";
 import { buildSignal } from "../src/lib/scoring";
-import { restUpsert } from "../src/lib/rest";
+import { generateNarrative, aiConfigured } from "../src/lib/ai";
+import { restSelect, restUpsert } from "../src/lib/rest";
 import type {
   FilingRef,
   InsiderBuy,
@@ -176,6 +177,37 @@ export async function runIngest(opts: IngestOptions): Promise<string | null> {
   const kept = signals
     .filter((s) => s.score >= opts.minStore)
     .sort((a, b) => b.score - a.score);
+
+  if (!opts.dryRun) {
+    try {
+      const cutoff = new Date(Date.now() - 120 * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      const known = await restSelect<{ issuer_cik: string }>(
+        "daily_signals",
+        `select=issuer_cik&signal_date=gte.${cutoff}&limit=1000`,
+      );
+      const knownSet = new Set(known.map((r) => r.issuer_cik));
+      let flagged = 0;
+      for (const s of signals) {
+        if (!knownSet.has(s.issuerCik)) {
+          s.reasons.push("first tracked cluster in this name");
+          flagged++;
+        }
+      }
+      if (flagged > 0) log(`${flagged} first-time clusters flagged`);
+    } catch {
+      // anomaly flag is best-effort only
+    }
+  }
+
+  if (!opts.dryRun && aiConfigured() && kept.length > 0) {
+    log("generating AI narratives for top 5 signals…");
+    for (const s of kept.slice(0, 5)) {
+      const n = await generateNarrative(s);
+      if (n) s.narrative = n;
+    }
+  }
 
   log(
     `${kept.length} signals ≥ ${opts.minStore} for ${signalDate}; top: ` +

@@ -21,6 +21,7 @@ export default function Home() {
           <span className="text-lg font-extrabold tracking-[0.2em]">FORMFOUR</span>
           <div className="flex items-center gap-6 text-sm text-zinc-400">
             <Link href="/signals" className="hover:text-white">Live signals</Link>
+            <Link href="/backtest" className="hover:text-white">Track record</Link>
             <Link href="/how-it-works" className="hover:text-white">How it works</Link>
             <Link
               href="#signup"

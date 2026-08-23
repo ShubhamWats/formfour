@@ -22,6 +22,7 @@ const BG = "#09090b";
 const CARD = "#141417";
 const BORDER = "#26262b";
 const TEXT = "#f4f4f5";
+const BODY = "#d4d4dc";
 const MUTED = "#9d9da8";
 const FAINT = "#6e6e78";
 const GREEN = "#34d399";
@@ -134,18 +135,43 @@ export function renderDigestHtml(
   signals: IssuerSignal[],
   dateLabel: string,
   unsubscribeUrl: string,
+  opts?: {
+    brief?: string | null;
+    stats?: { n: number; avg30: number; winRate: number } | null;
+  },
 ): string {
   const cards = signals.map(signalCard).join("");
+
+  const statsRow = opts?.stats
+    ? `<tr><td style="padding:0 0 14px">
+        <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#0e0e11" style="background:#0e0e11;border:1px solid ${BORDER};border-radius:10px"><tr>
+          <td style="${BASE_STYLE}padding:12px 16px;font-size:12px;color:${MUTED}">TRACK RECORD<br><strong style="font-size:15px;color:${TEXT}">${opts.stats.n} signals</strong></td>
+          <td style="${BASE_STYLE}padding:12px 16px;font-size:12px;color:${MUTED}">AVG 30D RETURN<br><strong style="font-size:15px;color:${opts.stats.avg30 >= 0 ? GREEN : "#f87171"}">${opts.stats.avg30 >= 0 ? "+" : ""}${opts.stats.avg30.toFixed(1)}%</strong></td>
+          <td style="${BASE_STYLE}padding:12px 16px;font-size:12px;color:${MUTED}">HIT RATE<br><strong style="font-size:15px;color:${TEXT}">${Math.round(opts.stats.winRate)}%</strong></td>
+        </tr></table>
+      </td></tr>`
+    : "";
+
+  const briefBox = opts?.brief
+    ? `<tr><td style="padding:0 0 14px">
+        <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#0e0e11" style="background:#0e0e11;border:1px solid ${BORDER};border-radius:10px"><tr><td style="${BASE_STYLE}padding:14px 16px">
+          <div style="font-size:11px;letter-spacing:1px;color:${GREEN};font-weight:700;padding-bottom:6px">TODAY'S BRIEF</div>
+          <div style="font-size:13px;color:${BODY};line-height:1.6">${esc(opts.brief)}</div>
+        </td></tr></table>
+      </td></tr>`
+    : "";
 
   return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:${BG}" bgcolor="${BG}">
   <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BG}" style="background:${BG};padding:24px 12px"><tr><td align="center">
     <table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%">
       <tr><td style="${BASE_STYLE}padding:8px 4px 22px">
         <span style="font-weight:800;font-size:18px;letter-spacing:3px;color:${TEXT}">FORM<span style="color:${GREEN}">FOUR</span></span>
-        <span style="color:${FAINT};font-size:12px;margin-left:8px">insider buying alerts</span>
+        <span style="color:#9ca3af;font-size:12px;margin-left:8px">insider buying alerts</span>
       </td></tr>
       <tr><td style="${BASE_STYLE}font-size:22px;font-weight:700;color:${TEXT};padding-bottom:4px">Top insider purchases</td></tr>
-      <tr><td style="${BASE_STYLE}font-size:13px;color:${MUTED};padding-bottom:16px">${esc(dateLabel)} · open-market buys only, from SEC Form 4 filings</td></tr>
+      <tr><td style="${BASE_STYLE}font-size:13px;color:${MUTED};padding-bottom:14px">${esc(dateLabel)} · open-market buys only, from SEC Form 4 filings</td></tr>
+      ${statsRow}
+      ${briefBox}
       ${cards || '<tr><td style="color:' + MUTED + ';font-size:14px">No qualifying signals today.</td></tr>'}
       <tr><td style="padding:28px 4px 8px;font-size:11px;color:${FAINT};line-height:1.6">
         FormFour republishes publicly available SEC filing data for research purposes. This is not investment advice or a recommendation to buy or sell any security.

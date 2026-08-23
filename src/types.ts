@@ -49,5 +49,6 @@ export interface IssuerSignal {
   price: PriceContext | null;
   score: number;
   reasons: string[];
+  narrative?: string;
   topBuys: InsiderBuy[];
 }

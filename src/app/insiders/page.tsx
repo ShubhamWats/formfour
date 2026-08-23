@@ -150,7 +150,12 @@ export default async function InsidersPage() {
                   <tr key={s.name} className={i % 2 === 0 ? "bg-zinc-900/40" : "bg-zinc-900/20"}>
                     <td className="px-4 py-3 font-mono text-zinc-500">{i + 1}</td>
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-zinc-200">{s.name}</div>
+                      <Link
+                        href={`/insider/${encodeURIComponent(s.name)}`}
+                        className="font-semibold text-zinc-200 hover:text-emerald-400"
+                      >
+                        {s.name}
+                      </Link>
                       <div className="text-xs text-zinc-500">
                         {[...s.roles].slice(0, 1).join("")}
                       </div>

@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { adminClient, supabaseConfigured } from "@/lib/supabase/admin";
 import { renderDigestHtml, sendEmail } from "@/lib/email";
+import { generateDailyBrief, aiConfigured } from "@/lib/ai";
+import { restSelect } from "@/lib/rest";
 import type { IssuerSignal } from "@/types";
 
 interface SignalRow {
   signal_date: string;
   issuer_name: string;
   details: IssuerSignal;
+}
+
+interface OutcomeLite {
+  ret_30d: number | null;
 }
 
 export async function GET(req: Request) {
@@ -54,6 +60,32 @@ export async function GET(req: Request) {
   }
   const signals = (rows.data as SignalRow[]).map((r) => r.details);
 
+  let brief: string | null = null;
+  if (aiConfigured() && signals.length > 0) {
+    brief = await generateDailyBrief(signals);
+  }
+
+  let stats: { n: number; avg30: number; winRate: number } | null = null;
+  try {
+    const outcomes = await restSelect<OutcomeLite>(
+      "signal_outcomes",
+      "select=ret_30d&ret_30d=not.is.null&order=signal_date.desc&limit=500",
+    );
+    const rets = outcomes
+      .map((o) => o.ret_30d)
+      .filter((r): r is number => r !== null);
+    if (rets.length >= 10) {
+      const avg30 = rets.reduce((a, b) => a + b, 0) / rets.length;
+      stats = {
+        n: rets.length,
+        avg30,
+        winRate: (rets.filter((r) => r > 0).length / rets.length) * 100,
+      };
+    }
+  } catch {
+    // track-record chips are best-effort
+  }
+
   const isMonday = new Date().getUTCDay() === 1;
   const plans = isMonday ? ["free", "pro"] : ["pro"];
   const subs = await supa
@@ -71,7 +103,7 @@ export async function GET(req: Request) {
   let sent = 0;
   for (const sub of subs.data) {
     const unsub = `${site}/api/unsubscribe?token=${sub.unsubscribe_token}`;
-    const html = renderDigestHtml(signals, dateLabel, unsub);
+    const html = renderDigestHtml(signals, dateLabel, unsub, { brief, stats });
     const tier = sub.plan === "pro" ? "Daily" : "Weekly";
     const result = await sendEmail(
       sub.email,
