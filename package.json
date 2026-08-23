@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "review": "tsx scripts/review.ts",
-    "track": "tsx scripts/track.ts"
+    "track": "tsx scripts/track.ts",
+    "tune": "tsx scripts/tune.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",

@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type { PriceContext } from "@/types";
 
 interface Bar {
@@ -9,6 +11,40 @@ interface Bar {
 
 const seriesCache = new Map<string, Bar[] | null>();
 const inflight = new Map<string, Promise<Bar[] | null>>();
+
+const CACHE_DIR = path.join(process.cwd(), ".cache", "prices");
+const CACHE_TTL_MS =
+  Number.parseInt(process.env.PRICE_TTL_HOURS ?? "12", 10) * 3_600_000;
+
+function cachePath(ticker: string): string {
+  return path.join(CACHE_DIR, `${ticker.replace(/[^A-Z0-9.-]/gi, "_")}.json`);
+}
+
+function readDiskCache(ticker: string): Bar[] | null | undefined {
+  try {
+    const file = cachePath(ticker);
+    if (!fs.existsSync(file)) return undefined;
+    const stat = fs.statSync(file);
+    if (Date.now() - stat.mtimeMs > CACHE_TTL_MS) return undefined;
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as {
+      bars: Bar[];
+    };
+    return Array.isArray(parsed.bars) && parsed.bars.length > 0
+      ? parsed.bars
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeDiskCache(ticker: string, bars: Bar[]): void {
+  try {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+    fs.writeFileSync(cachePath(ticker), JSON.stringify({ bars }));
+  } catch {
+    // read-only filesystem (serverless) — memory cache still applies
+  }
+}
 
 interface YahooChart {
   chart?: {
@@ -33,6 +69,12 @@ interface YahooChart {
 async function fetchSeries(ticker: string): Promise<Bar[] | null> {
   if (seriesCache.has(ticker)) return seriesCache.get(ticker)!;
   if (inflight.has(ticker)) return inflight.get(ticker)!;
+
+  const disk = readDiskCache(ticker);
+  if (disk) {
+    seriesCache.set(ticker, disk);
+    return disk;
+  }
 
   const job = (async () => {
     try {
@@ -69,6 +111,7 @@ async function fetchSeries(ticker: string): Promise<Bar[] | null> {
   inflight.set(ticker, job);
   const result = await job;
   seriesCache.set(ticker, result);
+  if (result) writeDiskCache(ticker, result);
   return result;
 }
 

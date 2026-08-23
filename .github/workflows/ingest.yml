@@ -31,6 +31,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           DIGEST_NOTIFY_URL: ${{ secrets.DIGEST_NOTIFY_URL }}
+          MIN_PRICE: ${{ secrets.MIN_PRICE || '1' }}
         run: npx tsx scripts/ingest.ts --days 2 --min-store 40
 
       - name: Track forward returns of past signals

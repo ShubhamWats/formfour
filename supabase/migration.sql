@@ -85,3 +85,10 @@ create index if not exists insider_buys_ticker_idx on public.insider_buys (ticke
 create index if not exists insider_buys_date_idx on public.insider_buys (signal_date);
 
 alter table public.insider_buys enable row level security;
+
+-- v4: filing dedup ledger
+create table if not exists public.parsed_filings (
+  accession text primary key,
+  parsed_at timestamptz not null default now()
+);
+alter table public.parsed_filings enable row level security;

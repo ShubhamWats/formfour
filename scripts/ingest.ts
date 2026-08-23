@@ -72,16 +72,22 @@ function valueTier(v: number): number {
 
 async function collectBuys(
   refs: FilingRef[],
-): Promise<Map<string, { name: string; symbol: string | null; buys: InsiderBuy[] }>> {
+): Promise<{
+  byIssuer: Map<string, { name: string; symbol: string | null; buys: InsiderBuy[] }>;
+  processed: string[];
+}> {
   const byIssuer = new Map<
     string,
     { name: string; symbol: string | null; buys: InsiderBuy[] }
   >();
+  const processed: string[] = [];
   let parsed = 0;
 
   for (let i = 0; i < refs.length; i++) {
+    let ok = false;
     try {
       const filing: ParsedFiling | null = await fetchAndParseFiling(refs[i]);
+      ok = true;
       if (!filing) continue;
       parsed++;
       const g =
@@ -92,13 +98,14 @@ async function collectBuys(
       g.buys.push(...filing.buys);
       byIssuer.set(filing.issuerCik, g);
     } catch {
-      // skip malformed filings
+      // network/parse failure — leave unmarked so a later run retries
     }
+    if (ok) processed.push(refs[i].accession);
     if ((i + 1) % 100 === 0)
       log(`${i + 1}/${refs.length} filings · parsed ${parsed}`);
   }
   log(`parsed ${parsed}/${refs.length} filings into ${byIssuer.size} issuers`);
-  return byIssuer;
+  return { byIssuer, processed };
 }
 
 interface Candidate {
@@ -118,8 +125,28 @@ async function requireSupabase() {
   return { url, key };
 }
 
+async function loadSeenAccessions(): Promise<Set<string>> {
+  const seen = new Set<string>();
+  try {
+    for (let offset = 0; offset < 100_000; offset += 1000) {
+      const rows = await restSelect<{ accession: string }>(
+        "parsed_filings",
+        `select=accession&order=parsed_at.desc&limit=1000&offset=${offset}`,
+      );
+      for (const r of rows) seen.add(r.accession);
+      if (rows.length < 1000) break;
+    }
+    log(`dedup ledger: ${seen.size} filings already parsed`);
+  } catch {
+    log("dedup ledger unavailable — proceeding without skip (run migration v4)");
+  }
+  return seen;
+}
+
+
 export async function runIngest(opts: IngestOptions): Promise<string | null> {
   const started = Date.now();
+  const minPrice = Number.parseFloat(process.env.MIN_PRICE ?? "0");
 
   let indexes: DailyIndex[];
   if (opts.on) {
@@ -139,12 +166,37 @@ export async function runIngest(opts: IngestOptions): Promise<string | null> {
   log(
     `[${signalDate}] ${refs.length} Form 4 filings across ${indexes.length} trading day(s)`,
   );
+
+  if (!opts.dryRun) {
+    const seen = await loadSeenAccessions();
+    const before = refs.length;
+    refs = refs.filter((r) => !seen.has(r.accession));
+    if (refs.length < before)
+      log(`dedup: skipping ${before - refs.length} already-parsed filings`);
+  }
+  if (refs.length === 0) {
+    log("nothing new to process");
+    return signalDate;
+  }
   if (opts.limit > 0 && opts.limit < refs.length) {
     refs = refs.slice(0, opts.limit);
     log(`limited to ${refs.length} filings`);
   }
 
-  const byIssuer = await collectBuys(refs);
+  const { byIssuer, processed } = await collectBuys(refs);
+  if (!opts.dryRun && processed.length > 0) {
+    try {
+      await restUpsert(
+        "parsed_filings",
+        processed.map((a) => ({ accession: a })),
+        "accession",
+      );
+    } catch (err) {
+      log(`ledger write skipped: ${String(err).slice(0, 120)}`);
+    }
+  }
+
+  if (minPrice > 0) log(`microcap gate: minPrice=$${minPrice}`);
 
   const candidates: Candidate[] = [...byIssuer.entries()]
     .map(([cik, g]) => {
@@ -172,6 +224,21 @@ export async function runIngest(opts: IngestOptions): Promise<string | null> {
     const ticker = (await tickerForCik(c.cik).catch(() => null)) ?? c.symbol;
     if (ticker) price = await priceContextAsOf(ticker, signalDate);
     signals.push(buildSignal(c.cik, c.name, c.buys, price));
+  }
+
+  let droppedMicrocaps = 0;
+  if (minPrice > 0) {
+    for (let i = signals.length - 1; i >= 0; i--) {
+      const s = signals[i];
+      if (s.price && s.price.close < minPrice) {
+        signals.splice(i, 1);
+        droppedMicrocaps++;
+      }
+    }
+    if (droppedMicrocaps > 0)
+      log(
+        `microcap gate: dropped ${droppedMicrocaps} issuer(s) under $${minPrice}`,
+      );
   }
 
   const kept = signals

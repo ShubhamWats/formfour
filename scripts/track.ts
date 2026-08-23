@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     await restUpsert("signal_outcomes", rows, "signal_date,issuer_cik");
   }
   log(
-    `done in ${((Date.now() - started) / 1000).toFixed(0)}s — ${batches.size} batch(es), ${updated} newly tracked`,
+    `done in ${((Date.now() - started) / 1000).toFixed(0)}s — ${batches.size} batch(es), ${updated} newly tracked, ${skipped} skipped`,
   );
 }
 
