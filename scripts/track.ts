@@ -87,7 +87,7 @@ async function main(): Promise<void> {
 
   let updated = 0;
   let skipped = 0;
-  const rows: Record<string, unknown>[] = [];
+  const batches = new Map<string, Record<string, unknown>[]>();
 
   for (const s of signals) {
     const ticker = s.ticker ?? s.details.ticker;
@@ -109,23 +109,27 @@ async function main(): Promise<void> {
       ticker,
       base_price: base,
     };
-    let touched = false;
+    const fillCols: string[] = [];
     for (const [days, col] of HORIZONS) {
       const already = (ex?.[col as keyof OutcomeRow] as number | null) ?? null;
       if (age >= days && already === null) {
         row[col] = Math.round(((cur - base) / base) * 100_000) / 1000;
-        touched = true;
+        fillCols.push(col);
+        if (!ex) updated++;
       }
     }
-    if (!ex || touched) {
-      rows.push(row);
-      if (touched) updated++;
-    }
+    if (ex && fillCols.length === 0) continue;
+    const shape = fillCols.sort().join(",");
+    if (!batches.has(shape)) batches.set(shape, []);
+    batches.get(shape)!.push(row);
   }
 
-  await restUpsert("signal_outcomes", rows, "signal_date,issuer_cik");
+  for (const [shape, rows] of batches) {
+    log(`upserting ${rows.length} rows (filling: ${shape || "baseline only"})`);
+    await restUpsert("signal_outcomes", rows, "signal_date,issuer_cik");
+  }
   log(
-    `done in ${((Date.now() - started) / 1000).toFixed(0)}s — ${rows.length} outcome rows written (${updated} newly matured returns), ${skipped} skipped`,
+    `done in ${((Date.now() - started) / 1000).toFixed(0)}s — ${batches.size} batch(es), ${updated} newly tracked`,
   );
 }
 
